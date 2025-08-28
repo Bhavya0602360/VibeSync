@@ -1,565 +1,331 @@
-from __future__ import annotations
+# testing.py
 
-import collections.abc as cabc
-import contextlib
-import io
-import os
-import shlex
-import shutil
-import sys
-import tempfile
-import typing as t
-from types import TracebackType
+from contextlib import contextmanager
+import typing
 
-from . import _compat
-from . import formatting
-from . import termui
-from . import utils
-from ._compat import _find_binary_reader
-
-if t.TYPE_CHECKING:
-    from _typeshed import ReadableBuffer
-
-    from .core import Command
+from .core import (
+    ParserElement,
+    ParseException,
+    Keyword,
+    __diag__,
+    __compat__,
+)
 
 
-class EchoingStdin:
-    def __init__(self, input: t.BinaryIO, output: t.BinaryIO) -> None:
-        self._input = input
-        self._output = output
-        self._paused = False
-
-    def __getattr__(self, x: str) -> t.Any:
-        return getattr(self._input, x)
-
-    def _echo(self, rv: bytes) -> bytes:
-        if not self._paused:
-            self._output.write(rv)
-
-        return rv
-
-    def read(self, n: int = -1) -> bytes:
-        return self._echo(self._input.read(n))
-
-    def read1(self, n: int = -1) -> bytes:
-        return self._echo(self._input.read1(n))  # type: ignore
-
-    def readline(self, n: int = -1) -> bytes:
-        return self._echo(self._input.readline(n))
-
-    def readlines(self) -> list[bytes]:
-        return [self._echo(x) for x in self._input.readlines()]
-
-    def __iter__(self) -> cabc.Iterator[bytes]:
-        return iter(self._echo(x) for x in self._input)
-
-    def __repr__(self) -> str:
-        return repr(self._input)
-
-
-@contextlib.contextmanager
-def _pause_echo(stream: EchoingStdin | None) -> cabc.Iterator[None]:
-    if stream is None:
-        yield
-    else:
-        stream._paused = True
-        yield
-        stream._paused = False
-
-
-class BytesIOCopy(io.BytesIO):
-    """Patch ``io.BytesIO`` to let the written stream be copied to another.
-
-    .. versionadded:: 8.2
+class pyparsing_test:
+    """
+    namespace class for classes useful in writing unit tests
     """
 
-    def __init__(self, copy_to: io.BytesIO) -> None:
-        super().__init__()
-        self.copy_to = copy_to
-
-    def flush(self) -> None:
-        super().flush()
-        self.copy_to.flush()
-
-    def write(self, b: ReadableBuffer) -> int:
-        self.copy_to.write(b)
-        return super().write(b)
-
-
-class StreamMixer:
-    """Mixes `<stdout>` and `<stderr>` streams.
-
-    The result is available in the ``output`` attribute.
-
-    .. versionadded:: 8.2
-    """
-
-    def __init__(self) -> None:
-        self.output: io.BytesIO = io.BytesIO()
-        self.stdout: io.BytesIO = BytesIOCopy(copy_to=self.output)
-        self.stderr: io.BytesIO = BytesIOCopy(copy_to=self.output)
-
-
-class _NamedTextIOWrapper(io.TextIOWrapper):
-    def __init__(
-        self, buffer: t.BinaryIO, name: str, mode: str, **kwargs: t.Any
-    ) -> None:
-        super().__init__(buffer, **kwargs)
-        self._name = name
-        self._mode = mode
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def mode(self) -> str:
-        return self._mode
-
-    def __next__(self) -> str:  # type: ignore
-        try:
-            line = super().__next__()
-        except StopIteration as e:
-            raise EOFError() from e
-        return line
-
-
-def make_input_stream(
-    input: str | bytes | t.IO[t.Any] | None, charset: str
-) -> t.BinaryIO:
-    # Is already an input stream.
-    if hasattr(input, "read"):
-        rv = _find_binary_reader(t.cast("t.IO[t.Any]", input))
-
-        if rv is not None:
-            return rv
-
-        raise TypeError("Could not find binary reader for input stream.")
-
-    if input is None:
-        input = b""
-    elif isinstance(input, str):
-        input = input.encode(charset)
-
-    return io.BytesIO(input)
-
-
-class Result:
-    """Holds the captured result of an invoked CLI script.
-
-    :param runner: The runner that created the result
-    :param stdout_bytes: The standard output as bytes.
-    :param stderr_bytes: The standard error as bytes.
-    :param output_bytes: A mix of ``stdout_bytes`` and ``stderr_bytes``, as the
-        user would see  it in its terminal.
-    :param return_value: The value returned from the invoked command.
-    :param exit_code: The exit code as integer.
-    :param exception: The exception that happened if one did.
-    :param exc_info: Exception information (exception type, exception instance,
-        traceback type).
-
-    .. versionchanged:: 8.2
-        ``stderr_bytes`` no longer optional, ``output_bytes`` introduced and
-        ``mix_stderr`` has been removed.
-
-    .. versionadded:: 8.0
-        Added ``return_value``.
-    """
-
-    def __init__(
-        self,
-        runner: CliRunner,
-        stdout_bytes: bytes,
-        stderr_bytes: bytes,
-        output_bytes: bytes,
-        return_value: t.Any,
-        exit_code: int,
-        exception: BaseException | None,
-        exc_info: tuple[type[BaseException], BaseException, TracebackType]
-        | None = None,
-    ):
-        self.runner = runner
-        self.stdout_bytes = stdout_bytes
-        self.stderr_bytes = stderr_bytes
-        self.output_bytes = output_bytes
-        self.return_value = return_value
-        self.exit_code = exit_code
-        self.exception = exception
-        self.exc_info = exc_info
-
-    @property
-    def output(self) -> str:
-        """The terminal output as unicode string, as the user would see it.
-
-        .. versionchanged:: 8.2
-            No longer a proxy for ``self.stdout``. Now has its own independent stream
-            that is mixing `<stdout>` and `<stderr>`, in the order they were written.
+    class reset_pyparsing_context:
         """
-        return self.output_bytes.decode(self.runner.charset, "replace").replace(
-            "\r\n", "\n"
-        )
+        Context manager to be used when writing unit tests that modify pyparsing config values:
+        - packrat parsing
+        - bounded recursion parsing
+        - default whitespace characters.
+        - default keyword characters
+        - literal string auto-conversion class
+        - __diag__ settings
 
-    @property
-    def stdout(self) -> str:
-        """The standard output as unicode string."""
-        return self.stdout_bytes.decode(self.runner.charset, "replace").replace(
-            "\r\n", "\n"
-        )
+        Example::
 
-    @property
-    def stderr(self) -> str:
-        """The standard error as unicode string.
+            with reset_pyparsing_context():
+                # test that literals used to construct a grammar are automatically suppressed
+                ParserElement.inlineLiteralsUsing(Suppress)
 
-        .. versionchanged:: 8.2
-            No longer raise an exception, always returns the `<stderr>` string.
+                term = Word(alphas) | Word(nums)
+                group = Group('(' + term[...] + ')')
+
+                # assert that the '()' characters are not included in the parsed tokens
+                self.assertParseAndCheckList(group, "(abc 123 def)", ['abc', '123', 'def'])
+
+            # after exiting context manager, literals are converted to Literal expressions again
         """
-        return self.stderr_bytes.decode(self.runner.charset, "replace").replace(
-            "\r\n", "\n"
-        )
 
-    def __repr__(self) -> str:
-        exc_str = repr(self.exception) if self.exception else "okay"
-        return f"<{type(self).__name__} {exc_str}>"
+        def __init__(self):
+            self._save_context = {}
 
+        def save(self):
+            self._save_context["default_whitespace"] = ParserElement.DEFAULT_WHITE_CHARS
+            self._save_context["default_keyword_chars"] = Keyword.DEFAULT_KEYWORD_CHARS
 
-class CliRunner:
-    """The CLI runner provides functionality to invoke a Click command line
-    script for unittesting purposes in a isolated environment.  This only
-    works in single-threaded systems without any concurrency as it changes the
-    global interpreter state.
+            self._save_context[
+                "literal_string_class"
+            ] = ParserElement._literalStringClass
 
-    :param charset: the character set for the input and output data.
-    :param env: a dictionary with environment variables for overriding.
-    :param echo_stdin: if this is set to `True`, then reading from `<stdin>` writes
-                       to `<stdout>`.  This is useful for showing examples in
-                       some circumstances.  Note that regular prompts
-                       will automatically echo the input.
-    :param catch_exceptions: Whether to catch any exceptions other than
-                             ``SystemExit`` when running :meth:`~CliRunner.invoke`.
+            self._save_context["verbose_stacktrace"] = ParserElement.verbose_stacktrace
 
-    .. versionchanged:: 8.2
-        Added the ``catch_exceptions`` parameter.
+            self._save_context["packrat_enabled"] = ParserElement._packratEnabled
+            if ParserElement._packratEnabled:
+                self._save_context[
+                    "packrat_cache_size"
+                ] = ParserElement.packrat_cache.size
+            else:
+                self._save_context["packrat_cache_size"] = None
+            self._save_context["packrat_parse"] = ParserElement._parse
+            self._save_context[
+                "recursion_enabled"
+            ] = ParserElement._left_recursion_enabled
 
-    .. versionchanged:: 8.2
-        ``mix_stderr`` parameter has been removed.
-    """
+            self._save_context["__diag__"] = {
+                name: getattr(__diag__, name) for name in __diag__._all_names
+            }
 
-    def __init__(
-        self,
-        charset: str = "utf-8",
-        env: cabc.Mapping[str, str | None] | None = None,
-        echo_stdin: bool = False,
-        catch_exceptions: bool = True,
-    ) -> None:
-        self.charset = charset
-        self.env: cabc.Mapping[str, str | None] = env or {}
-        self.echo_stdin = echo_stdin
-        self.catch_exceptions = catch_exceptions
+            self._save_context["__compat__"] = {
+                "collect_all_And_tokens": __compat__.collect_all_And_tokens
+            }
 
-    def get_default_prog_name(self, cli: Command) -> str:
-        """Given a command object it will return the default program name
-        for it.  The default is the `name` attribute or ``"root"`` if not
-        set.
-        """
-        return cli.name or "root"
+            return self
 
-    def make_env(
-        self, overrides: cabc.Mapping[str, str | None] | None = None
-    ) -> cabc.Mapping[str, str | None]:
-        """Returns the environment overrides for invoking a script."""
-        rv = dict(self.env)
-        if overrides:
-            rv.update(overrides)
-        return rv
+        def restore(self):
+            # reset pyparsing global state
+            if (
+                ParserElement.DEFAULT_WHITE_CHARS
+                != self._save_context["default_whitespace"]
+            ):
+                ParserElement.set_default_whitespace_chars(
+                    self._save_context["default_whitespace"]
+                )
 
-    @contextlib.contextmanager
-    def isolation(
-        self,
-        input: str | bytes | t.IO[t.Any] | None = None,
-        env: cabc.Mapping[str, str | None] | None = None,
-        color: bool = False,
-    ) -> cabc.Iterator[tuple[io.BytesIO, io.BytesIO, io.BytesIO]]:
-        """A context manager that sets up the isolation for invoking of a
-        command line tool.  This sets up `<stdin>` with the given input data
-        and `os.environ` with the overrides from the given dictionary.
-        This also rebinds some internals in Click to be mocked (like the
-        prompt functionality).
+            ParserElement.verbose_stacktrace = self._save_context["verbose_stacktrace"]
 
-        This is automatically done in the :meth:`invoke` method.
-
-        :param input: the input stream to put into `sys.stdin`.
-        :param env: the environment overrides as dictionary.
-        :param color: whether the output should contain color codes. The
-                      application can still override this explicitly.
-
-        .. versionadded:: 8.2
-            An additional output stream is returned, which is a mix of
-            `<stdout>` and `<stderr>` streams.
-
-        .. versionchanged:: 8.2
-            Always returns the `<stderr>` stream.
-
-        .. versionchanged:: 8.0
-            `<stderr>` is opened with ``errors="backslashreplace"``
-            instead of the default ``"strict"``.
-
-        .. versionchanged:: 4.0
-            Added the ``color`` parameter.
-        """
-        bytes_input = make_input_stream(input, self.charset)
-        echo_input = None
-
-        old_stdin = sys.stdin
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        old_forced_width = formatting.FORCED_WIDTH
-        formatting.FORCED_WIDTH = 80
-
-        env = self.make_env(env)
-
-        stream_mixer = StreamMixer()
-
-        if self.echo_stdin:
-            bytes_input = echo_input = t.cast(
-                t.BinaryIO, EchoingStdin(bytes_input, stream_mixer.stdout)
+            Keyword.DEFAULT_KEYWORD_CHARS = self._save_context["default_keyword_chars"]
+            ParserElement.inlineLiteralsUsing(
+                self._save_context["literal_string_class"]
             )
 
-        sys.stdin = text_input = _NamedTextIOWrapper(
-            bytes_input, encoding=self.charset, name="<stdin>", mode="r"
-        )
+            for name, value in self._save_context["__diag__"].items():
+                (__diag__.enable if value else __diag__.disable)(name)
 
-        if self.echo_stdin:
-            # Force unbuffered reads, otherwise TextIOWrapper reads a
-            # large chunk which is echoed early.
-            text_input._CHUNK_SIZE = 1  # type: ignore
+            ParserElement._packratEnabled = False
+            if self._save_context["packrat_enabled"]:
+                ParserElement.enable_packrat(self._save_context["packrat_cache_size"])
+            else:
+                ParserElement._parse = self._save_context["packrat_parse"]
+            ParserElement._left_recursion_enabled = self._save_context[
+                "recursion_enabled"
+            ]
 
-        sys.stdout = _NamedTextIOWrapper(
-            stream_mixer.stdout, encoding=self.charset, name="<stdout>", mode="w"
-        )
+            __compat__.collect_all_And_tokens = self._save_context["__compat__"]
 
-        sys.stderr = _NamedTextIOWrapper(
-            stream_mixer.stderr,
-            encoding=self.charset,
-            name="<stderr>",
-            mode="w",
-            errors="backslashreplace",
-        )
+            return self
 
-        @_pause_echo(echo_input)  # type: ignore
-        def visible_input(prompt: str | None = None) -> str:
-            sys.stdout.write(prompt or "")
-            val = next(text_input).rstrip("\r\n")
-            sys.stdout.write(f"{val}\n")
-            sys.stdout.flush()
-            return val
+        def copy(self):
+            ret = type(self)()
+            ret._save_context.update(self._save_context)
+            return ret
 
-        @_pause_echo(echo_input)  # type: ignore
-        def hidden_input(prompt: str | None = None) -> str:
-            sys.stdout.write(f"{prompt or ''}\n")
-            sys.stdout.flush()
-            return next(text_input).rstrip("\r\n")
+        def __enter__(self):
+            return self.save()
 
-        @_pause_echo(echo_input)  # type: ignore
-        def _getchar(echo: bool) -> str:
-            char = sys.stdin.read(1)
+        def __exit__(self, *args):
+            self.restore()
 
-            if echo:
-                sys.stdout.write(char)
-
-            sys.stdout.flush()
-            return char
-
-        default_color = color
-
-        def should_strip_ansi(
-            stream: t.IO[t.Any] | None = None, color: bool | None = None
-        ) -> bool:
-            if color is None:
-                return not default_color
-            return not color
-
-        old_visible_prompt_func = termui.visible_prompt_func
-        old_hidden_prompt_func = termui.hidden_prompt_func
-        old__getchar_func = termui._getchar
-        old_should_strip_ansi = utils.should_strip_ansi  # type: ignore
-        old__compat_should_strip_ansi = _compat.should_strip_ansi
-        termui.visible_prompt_func = visible_input
-        termui.hidden_prompt_func = hidden_input
-        termui._getchar = _getchar
-        utils.should_strip_ansi = should_strip_ansi  # type: ignore
-        _compat.should_strip_ansi = should_strip_ansi
-
-        old_env = {}
-        try:
-            for key, value in env.items():
-                old_env[key] = os.environ.get(key)
-                if value is None:
-                    try:
-                        del os.environ[key]
-                    except Exception:
-                        pass
-                else:
-                    os.environ[key] = value
-            yield (stream_mixer.stdout, stream_mixer.stderr, stream_mixer.output)
-        finally:
-            for key, value in old_env.items():
-                if value is None:
-                    try:
-                        del os.environ[key]
-                    except Exception:
-                        pass
-                else:
-                    os.environ[key] = value
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-            sys.stdin = old_stdin
-            termui.visible_prompt_func = old_visible_prompt_func
-            termui.hidden_prompt_func = old_hidden_prompt_func
-            termui._getchar = old__getchar_func
-            utils.should_strip_ansi = old_should_strip_ansi  # type: ignore
-            _compat.should_strip_ansi = old__compat_should_strip_ansi
-            formatting.FORCED_WIDTH = old_forced_width
-
-    def invoke(
-        self,
-        cli: Command,
-        args: str | cabc.Sequence[str] | None = None,
-        input: str | bytes | t.IO[t.Any] | None = None,
-        env: cabc.Mapping[str, str | None] | None = None,
-        catch_exceptions: bool | None = None,
-        color: bool = False,
-        **extra: t.Any,
-    ) -> Result:
-        """Invokes a command in an isolated environment.  The arguments are
-        forwarded directly to the command line script, the `extra` keyword
-        arguments are passed to the :meth:`~clickpkg.Command.main` function of
-        the command.
-
-        This returns a :class:`Result` object.
-
-        :param cli: the command to invoke
-        :param args: the arguments to invoke. It may be given as an iterable
-                     or a string. When given as string it will be interpreted
-                     as a Unix shell command. More details at
-                     :func:`shlex.split`.
-        :param input: the input data for `sys.stdin`.
-        :param env: the environment overrides.
-        :param catch_exceptions: Whether to catch any other exceptions than
-                                 ``SystemExit``. If :data:`None`, the value
-                                 from :class:`CliRunner` is used.
-        :param extra: the keyword arguments to pass to :meth:`main`.
-        :param color: whether the output should contain color codes. The
-                      application can still override this explicitly.
-
-        .. versionadded:: 8.2
-            The result object has the ``output_bytes`` attribute with
-            the mix of ``stdout_bytes`` and ``stderr_bytes``, as the user would
-            see it in its terminal.
-
-        .. versionchanged:: 8.2
-            The result object always returns the ``stderr_bytes`` stream.
-
-        .. versionchanged:: 8.0
-            The result object has the ``return_value`` attribute with
-            the value returned from the invoked command.
-
-        .. versionchanged:: 4.0
-            Added the ``color`` parameter.
-
-        .. versionchanged:: 3.0
-            Added the ``catch_exceptions`` parameter.
-
-        .. versionchanged:: 3.0
-            The result object has the ``exc_info`` attribute with the
-            traceback if available.
+    class TestParseResultsAsserts:
         """
-        exc_info = None
-        if catch_exceptions is None:
-            catch_exceptions = self.catch_exceptions
-
-        with self.isolation(input=input, env=env, color=color) as outstreams:
-            return_value = None
-            exception: BaseException | None = None
-            exit_code = 0
-
-            if isinstance(args, str):
-                args = shlex.split(args)
-
-            try:
-                prog_name = extra.pop("prog_name")
-            except KeyError:
-                prog_name = self.get_default_prog_name(cli)
-
-            try:
-                return_value = cli.main(args=args or (), prog_name=prog_name, **extra)
-            except SystemExit as e:
-                exc_info = sys.exc_info()
-                e_code = t.cast("int | t.Any | None", e.code)
-
-                if e_code is None:
-                    e_code = 0
-
-                if e_code != 0:
-                    exception = e
-
-                if not isinstance(e_code, int):
-                    sys.stdout.write(str(e_code))
-                    sys.stdout.write("\n")
-                    e_code = 1
-
-                exit_code = e_code
-
-            except Exception as e:
-                if not catch_exceptions:
-                    raise
-                exception = e
-                exit_code = 1
-                exc_info = sys.exc_info()
-            finally:
-                sys.stdout.flush()
-                sys.stderr.flush()
-                stdout = outstreams[0].getvalue()
-                stderr = outstreams[1].getvalue()
-                output = outstreams[2].getvalue()
-
-        return Result(
-            runner=self,
-            stdout_bytes=stdout,
-            stderr_bytes=stderr,
-            output_bytes=output,
-            return_value=return_value,
-            exit_code=exit_code,
-            exception=exception,
-            exc_info=exc_info,  # type: ignore
-        )
-
-    @contextlib.contextmanager
-    def isolated_filesystem(
-        self, temp_dir: str | os.PathLike[str] | None = None
-    ) -> cabc.Iterator[str]:
-        """A context manager that creates a temporary directory and
-        changes the current working directory to it. This isolates tests
-        that affect the contents of the CWD to prevent them from
-        interfering with each other.
-
-        :param temp_dir: Create the temporary directory under this
-            directory. If given, the created directory is not removed
-            when exiting.
-
-        .. versionchanged:: 8.0
-            Added the ``temp_dir`` parameter.
+        A mixin class to add parse results assertion methods to normal unittest.TestCase classes.
         """
-        cwd = os.getcwd()
-        dt = tempfile.mkdtemp(dir=temp_dir)
-        os.chdir(dt)
 
-        try:
-            yield dt
-        finally:
-            os.chdir(cwd)
+        def assertParseResultsEquals(
+            self, result, expected_list=None, expected_dict=None, msg=None
+        ):
+            """
+            Unit test assertion to compare a :class:`ParseResults` object with an optional ``expected_list``,
+            and compare any defined results names with an optional ``expected_dict``.
+            """
+            if expected_list is not None:
+                self.assertEqual(expected_list, result.as_list(), msg=msg)
+            if expected_dict is not None:
+                self.assertEqual(expected_dict, result.as_dict(), msg=msg)
 
-            if temp_dir is None:
-                try:
-                    shutil.rmtree(dt)
-                except OSError:
-                    pass
+        def assertParseAndCheckList(
+            self, expr, test_string, expected_list, msg=None, verbose=True
+        ):
+            """
+            Convenience wrapper assert to test a parser element and input string, and assert that
+            the resulting ``ParseResults.asList()`` is equal to the ``expected_list``.
+            """
+            result = expr.parse_string(test_string, parse_all=True)
+            if verbose:
+                print(result.dump())
+            else:
+                print(result.as_list())
+            self.assertParseResultsEquals(result, expected_list=expected_list, msg=msg)
+
+        def assertParseAndCheckDict(
+            self, expr, test_string, expected_dict, msg=None, verbose=True
+        ):
+            """
+            Convenience wrapper assert to test a parser element and input string, and assert that
+            the resulting ``ParseResults.asDict()`` is equal to the ``expected_dict``.
+            """
+            result = expr.parse_string(test_string, parseAll=True)
+            if verbose:
+                print(result.dump())
+            else:
+                print(result.as_list())
+            self.assertParseResultsEquals(result, expected_dict=expected_dict, msg=msg)
+
+        def assertRunTestResults(
+            self, run_tests_report, expected_parse_results=None, msg=None
+        ):
+            """
+            Unit test assertion to evaluate output of ``ParserElement.runTests()``. If a list of
+            list-dict tuples is given as the ``expected_parse_results`` argument, then these are zipped
+            with the report tuples returned by ``runTests`` and evaluated using ``assertParseResultsEquals``.
+            Finally, asserts that the overall ``runTests()`` success value is ``True``.
+
+            :param run_tests_report: tuple(bool, [tuple(str, ParseResults or Exception)]) returned from runTests
+            :param expected_parse_results (optional): [tuple(str, list, dict, Exception)]
+            """
+            run_test_success, run_test_results = run_tests_report
+
+            if expected_parse_results is not None:
+                merged = [
+                    (*rpt, expected)
+                    for rpt, expected in zip(run_test_results, expected_parse_results)
+                ]
+                for test_string, result, expected in merged:
+                    # expected should be a tuple containing a list and/or a dict or an exception,
+                    # and optional failure message string
+                    # an empty tuple will skip any result validation
+                    fail_msg = next(
+                        (exp for exp in expected if isinstance(exp, str)), None
+                    )
+                    expected_exception = next(
+                        (
+                            exp
+                            for exp in expected
+                            if isinstance(exp, type) and issubclass(exp, Exception)
+                        ),
+                        None,
+                    )
+                    if expected_exception is not None:
+                        with self.assertRaises(
+                            expected_exception=expected_exception, msg=fail_msg or msg
+                        ):
+                            if isinstance(result, Exception):
+                                raise result
+                    else:
+                        expected_list = next(
+                            (exp for exp in expected if isinstance(exp, list)), None
+                        )
+                        expected_dict = next(
+                            (exp for exp in expected if isinstance(exp, dict)), None
+                        )
+                        if (expected_list, expected_dict) != (None, None):
+                            self.assertParseResultsEquals(
+                                result,
+                                expected_list=expected_list,
+                                expected_dict=expected_dict,
+                                msg=fail_msg or msg,
+                            )
+                        else:
+                            # warning here maybe?
+                            print("no validation for {!r}".format(test_string))
+
+            # do this last, in case some specific test results can be reported instead
+            self.assertTrue(
+                run_test_success, msg=msg if msg is not None else "failed runTests"
+            )
+
+        @contextmanager
+        def assertRaisesParseException(self, exc_type=ParseException, msg=None):
+            with self.assertRaises(exc_type, msg=msg):
+                yield
+
+    @staticmethod
+    def with_line_numbers(
+        s: str,
+        start_line: typing.Optional[int] = None,
+        end_line: typing.Optional[int] = None,
+        expand_tabs: bool = True,
+        eol_mark: str = "|",
+        mark_spaces: typing.Optional[str] = None,
+        mark_control: typing.Optional[str] = None,
+    ) -> str:
+        """
+        Helpful method for debugging a parser - prints a string with line and column numbers.
+        (Line and column numbers are 1-based.)
+
+        :param s: tuple(bool, str - string to be printed with line and column numbers
+        :param start_line: int - (optional) starting line number in s to print (default=1)
+        :param end_line: int - (optional) ending line number in s to print (default=len(s))
+        :param expand_tabs: bool - (optional) expand tabs to spaces, to match the pyparsing default
+        :param eol_mark: str - (optional) string to mark the end of lines, helps visualize trailing spaces (default="|")
+        :param mark_spaces: str - (optional) special character to display in place of spaces
+        :param mark_control: str - (optional) convert non-printing control characters to a placeholding
+                                 character; valid values:
+                                 - "unicode" - replaces control chars with Unicode symbols, such as "␍" and "␊"
+                                 - any single character string - replace control characters with given string
+                                 - None (default) - string is displayed as-is
+
+        :return: str - input string with leading line numbers and column number headers
+        """
+        if expand_tabs:
+            s = s.expandtabs()
+        if mark_control is not None:
+            if mark_control == "unicode":
+                tbl = str.maketrans(
+                    {c: u for c, u in zip(range(0, 33), range(0x2400, 0x2433))}
+                    | {127: 0x2421}
+                )
+                eol_mark = ""
+            else:
+                tbl = str.maketrans(
+                    {c: mark_control for c in list(range(0, 32)) + [127]}
+                )
+            s = s.translate(tbl)
+        if mark_spaces is not None and mark_spaces != " ":
+            if mark_spaces == "unicode":
+                tbl = str.maketrans({9: 0x2409, 32: 0x2423})
+                s = s.translate(tbl)
+            else:
+                s = s.replace(" ", mark_spaces)
+        if start_line is None:
+            start_line = 1
+        if end_line is None:
+            end_line = len(s)
+        end_line = min(end_line, len(s))
+        start_line = min(max(1, start_line), end_line)
+
+        if mark_control != "unicode":
+            s_lines = s.splitlines()[start_line - 1 : end_line]
+        else:
+            s_lines = [line + "␊" for line in s.split("␊")[start_line - 1 : end_line]]
+        if not s_lines:
+            return ""
+
+        lineno_width = len(str(end_line))
+        max_line_len = max(len(line) for line in s_lines)
+        lead = " " * (lineno_width + 1)
+        if max_line_len >= 99:
+            header0 = (
+                lead
+                + "".join(
+                    "{}{}".format(" " * 99, (i + 1) % 100)
+                    for i in range(max(max_line_len // 100, 1))
+                )
+                + "\n"
+            )
+        else:
+            header0 = ""
+        header1 = (
+            header0
+            + lead
+            + "".join(
+                "         {}".format((i + 1) % 10)
+                for i in range(-(-max_line_len // 10))
+            )
+            + "\n"
+        )
+        header2 = lead + "1234567890" * (-(-max_line_len // 10)) + "\n"
+        return (
+            header1
+            + header2
+            + "\n".join(
+                "{:{}d}:{}{}".format(i, lineno_width, line, eol_mark)
+                for i, line in enumerate(s_lines, start=start_line)
+            )
+            + "\n"
+        )
