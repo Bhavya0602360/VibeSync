@@ -1,1 +1,1 @@
-bcrypt
+flask_cors
