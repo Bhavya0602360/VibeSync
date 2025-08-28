@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VibeSync - Mood-Based Music Recommender</title>
+  <style>
+    /* CSS STYLES - Optimized and Indented Correctly */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fbc2eb, #a18cd1);
+      background-size: 400% 400%;
+      animation: gradientMove 10s ease infinite;
+      margin: 0;
+      padding: 0;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    @keyframes gradientMove {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    header {
+      text-align: center;
+      padding: 30px 0 10px;
+    }
+
+    header h1 {
+      font-family: 'Times New Roman', serif;
+      font-size: 40px;
+      margin: 0;
+      color: white;
+    }
+
+    nav {
+      margin: 20px 0;
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+    }
+
+    nav a {
+      text-decoration: none;
+      color: white;
+      font-weight: bold;
+      border: 1px solid white;
+      padding: 10px 20px;
+      border-radius: 10px;
+      background-color: rgba(255, 255, 255, 0.1);
+      transition: background-color 0.3s ease;
+    }
+
+    nav a:hover {
+      background-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+
+    .module {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid #fff;
+      padding: 20px;
+      border-radius: 20px;
+      margin: 15px;
+      width: 320px; /* Keep the width consistent for all modules */
+      text-align: center;
+      transition: transform 0.3s ease;
+      /* MIN-HEIGHT ADJUSTMENT FOR MODULES TO ACCOMMODATE LARGER OUTPUT */
+      min-height: 450px;
+      /* Adjusted to give enough space for output area */
+      display: flex;
+      /* Use flex to align content within module */
+      flex-direction: column;
+    }
+
+    .module:hover {
+      transform: scale(1.03);
+    }
+
+    video {
+      width: 100%;
+      margin-top: 10px;
+      /* Keep this for spacing videos from buttons */
+      border-radius: 5px;
+      padding: 5px;
+    }
+
+    /* Combined audio and input[type="text"] styling for consistency */
+    input[type="text"],
+    audio {
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 5px;
+      padding: 5px;
+    }
+
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 10px;
+      background-color: #fff;
+      color: #333;
+      cursor: pointer;
+      margin-top: 10px;
+      /* Keep this for spacing buttons */
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #eee;
+    }
+
+    .output {
+      margin-top: 15px;
+      text-align: left;
+      font-size: 14px;
+      max-height: 250px;
+      overflow-y: auto;
+      padding: 10px;
+      flex-grow: 1;
+    }
+
+    .output ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+
+    .output li {
+      margin-bottom: 2px;
+      line-height: 1.3;
+      display: flex; /* Make list items a flex container */
+      align-items: center;
+      /* Vertically align items in the list */
+      flex-wrap: wrap;
+      /* Allow items to wrap if needed */
+    }
+
+    /* Style for the song title itself */
+    .output li b {
+        font-size: 13px;
+        color: black; /* Changed to black */
+        flex-shrink: 1;
+        /* Allow the title to shrink */
+        min-width: 0;
+        /* Allow it to shrink beyond content if needed */
+        margin-right: 5px;
+        /* Add a small margin to separate from heart */
+        overflow: hidden;
+        /* Hide overflow */
+        text-overflow: ellipsis;
+        /* Add ellipsis for overflow */
+        white-space: nowrap;
+        /* Keep title on one line */
+    }
+
+    /* Further refinement for the audio element within the output list items */
+    .output li audio {
+        margin-top: 3px;
+        margin-bottom: 3px;
+        width: 100%; /* Take full width of its line */
+        flex-basis: 100%;
+        /* Make audio player take a new line */
+    }
+
+    /* Adjust the like icon to sit beside the title more snugly */
+    .output li .like-icon {
+        font-size: 18px;
+        /* Removed margin-left: auto; to keep it next to the title */
+        margin-left: 5px;
+        /* Add a small margin to separate from title */
+        color: black;
+        /* Changed to black for better visibility on lighter background */
+        cursor: pointer;
+        flex-shrink: 0; /* Prevent the heart from shrinking */
+    }
+
+
+    /* Scrollbar Styling */
+    .output::-webkit-scrollbar {
+      width: 8px;
+      /* Width of the scrollbar */
+    }
+
+    .output::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      /* Slightly transparent track */
+      border-radius: 10px;
+    }
+
+    .output::-webkit-scrollbar-thumb {
+      background: rgba(161, 140, 209, 0.7);
+      /* A transparent purple that matches the gradient */
+      border-radius: 10px;
+    }
+
+    .output::-webkit-scrollbar-thumb:hover {
+      background: rgba(161, 140, 209, 1);
+      /* Opaque purple on hover */
+    }
+
+    /* Styles for general output prompts */
+    .output strong {
+        color: white;
+        /* Changed to white for general prompts like 'Detected Mood' and 'Songs Based on Your Mood' */
+        font-weight: bold;
+        /* Ensure it's bold */
+    }
+
+    /* Specific styles for the initial prompt messages */
+    #faceOutput strong, #voiceOutput strong { /* Target the strong tag within these outputs */
+        color: black;
+        /* Changed to black */
+        font-weight: bold;
+        /* Make it bold */
+    }
+
+    /* Style for highlighting specific words like "happy" */
+    .output .highlight-black {
+        color: black;
+        font-weight: bold;
+    }
+
+
+    footer {
+      margin-top: auto;
+      padding: 20px;
+      text-align: center;
+      font-size: 14px;
+      color: #eee;
+    }
+
+    .section-box {
+      background-color: rgba(255, 255, 255, 0.95);
+      border: 2px solid white;
+      border-radius: 20px;
+      padding: 30px;
+      text-align: center;
+      color: black;
+      margin-top: 30px;
+      width: 90%;
+      max-width: 1000px;
+      display: none;
+    }
+
+    .section-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+
+    .section-buttons button {
+      padding: 10px 15px;
+      border-radius: 10px;
+      font-weight: bold;
+      border: none;
+      /* Background color for buttons in section-buttons, including the "Back" button */
+      background-color: #a18cd1;
+      /* Purple color */
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .section-buttons button:hover {
+      background-color: #7a67b2;
+    }
+
+    /* Style specifically for the Switch Account button to match the purple scheme */
+    #loginSection .section-buttons button:last-child {
+        background-color: #a18cd1;
+        /* Purple color */
+        color: white;
+    }
+
+    #loginSection .section-buttons button:last-child:hover {
+        background-color: #7a67b2;
+    }
+
+
+    .profile-column { /* This style is used for all column-like sections */
+      background-color: rgba(255, 255, 255, 0.95);
+      color: #333;
+      border-radius: 15px;
+      padding: 20px;
+      min-width: 250px;
+      text-align: left;
+      flex: 1;
+      /* Allows columns to grow and shrink */
+    }
+
+    .profile-column h3 {
+      margin-bottom: 10px;
+    }
+
+    .profile-column button {
+      display: block;
+      /* Default to block for most buttons in profile-column */
+      margin: 8px 0;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      background-color: #a18cd1; /* Purple color for buttons */
+      color: white;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    /* SPECIFIC STYLE FOR THE NOTIFICATION TOGGLE BUTTON */
+    .profile-column .notification-toggle-button {
+        display: inline-block;
+        /* Make it inline with text */
+        width: auto;
+        /* Override width: 100% */
+        margin-left: 10px;
+        /* Space from the text */
+        padding: 5px 10px;
+        /* Smaller padding */
+        vertical-align: middle;
+        /* Align vertically with text */
+    }
+
+
+    .profile-column button:hover {
+      background-color: #7a67b2;
+    }
+
+    /* Styles for side-by-side labels and smaller inputs in edit info */
+    .form-group-inline {
+      display: flex;
+      align-items: center;
+      gap: 10px; /* Space between label and input */
+      margin-bottom: 15px;
+      /* Space between form groups */
+      justify-content: center;
+      /* Center the label-input pairs within the form */
+      width: 100%;
+      /* Take full full width of parent to center */
+    }
+
+    .form-group-inline label {
+      min-width: 80px;
+      /* Ensure labels align */
+      text-align: right;
+      color: #333;
+      /* Darken label text for readability */
+    }
+
+    .form-group-inline input[type="text"],
+    .form-group-inline input[type="email"] {
+      width: 180px;
+      /* Fixed small width for the input box */
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    }
+
+    /* Styling for the main content within Settings to arrange columns */
+    .settings-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center; /* Center the columns horizontally */
+      margin-top: 20px;
+      /* Add some space below default settings info */
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VibeSync – Let Your Mood Choose the Music 🎧</h1>
+    <nav>
+      <a href="#" onclick="showSection('loginSection')">Login</a>
+      <a href="#" onclick="showSection('profileSection')">Profile</a>
+      <a href="#" onclick="showSection('settingsSection')">Settings</a>
+    </nav>
+  </header>
+
+  <div id="loginSection" class="section-box">
+    <h2>Login Status</h2>
+    <p style="margin-top: 20px;">Logged in as <strong id="loggedUser">Admin</strong></p>
+    <div class="section-buttons">
+      <button onclick="goBack()">⬅ Back</button>
+      <button onclick="switchAccount()">Switch Account</button>
+    </div>
+  </div>
+
+  <div id="profileSection" class="section-box">
+    <h2>User Profile</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;">
+      <div class="profile-column">
+        <h3>User Info</h3>
+        <p><strong>Name:</strong> <span id="profileName">Admin</span></p>
+        <p><strong>Email:</strong> <span id="profileEmail">admin@gmail.com</span></p>
+      </div>
+      <div class="profile-column">
+        <h3>Listening Stats</h3>
+        <button onclick="showRecentlyPlayed()">Recently Played Songs</button>
+        <button onclick="showListeningHistory()">Listening History</button>
+        <button onclick="showLikedSongs()">Liked Songs</button>
+      </div>
+    </div>
+    <div class="section-buttons">
+      <button onclick="goBack()">⬅ Back</button>
+    </div>
+  </div>
+
+  <div id="settingsSection" class="section-box">
+    <h2>Settings</h2>
+    <div class="settings-content">
+      <div class="profile-column">
+        <h3>General Settings</h3>
+        <p>
+          Notifications: <strong id="notificationStatus">Enabled</strong>
+          <button onclick="toggleNotifications()" class="notification-toggle-button">Toggle</button>
+        </p>
+        <p>Theme: <strong>Auto</strong></p>
+        </div>
+
+      <div class="profile-column">
+        <h3>Account Management</h3>
+        <button onclick="showEditInfo()">Edit Profile Info</button>
+        <button onclick="showChangePassword()">Change Password</button>
+        <button onclick="logout()">Logout</button>
+      </div>
+    </div>
+    <div class="section-buttons">
+      <button onclick="goBack()">⬅ Back</button>
+    </div>
+  </div>
+
+  <div id="recentlyPlayedSection" class="section-box">
+    <h2>Recently Played Songs</h2>
+    <ul id="recentlyPlayedList" style="text-align: left; line-height: 2;"></ul>
+    <div class="section-buttons">
+      <button onclick="showSection('profileSection')">⬅ Back to Profile</button>
+    </div>
+  </div>
+
+  <div id="listeningHistorySection" class="section-box">
+    <h2>Listening History</h2>
+    <ul id="listeningHistoryList" style="text-align: left; line-height: 2;"></ul>
+    <div class="section-buttons">
+      <button onclick="showSection('profileSection')">⬅ Back to Profile</button>
+    </div>
+  </div>
+
+  <div id="likedSongsSection" class="section-box">
+    <h2>Liked Songs</h2>
+    <ul id="likedSongsList" style="text-align: left; line-height: 2;"></ul>
+    <div class="section-buttons">
+      <button onclick="showSection('profileSection')">⬅ Back to Profile</button>
+    </div>
+  </div>
+
+  <div id="editInfoSection" class="section-box">
+    <h2>Edit Profile Info</h2>
+    <form onsubmit="saveProfileInfo(event)" style="display: flex; flex-direction: column; align-items: center;">
+
+      <div class="form-group-inline">
+        <label for="editName">Name:</label>
+        <input type="text" id="editName" required>
+      </div>
+
+      <div class="form-group-inline">
+        <label for="editEmail">Email:</label>
+        <input type="email" id="editEmail" required>
+      </div>
+
+      <div class="section-buttons">
+        <button type="submit">💾 Save</button>
+        <button type="button" onclick="showSection('settingsSection')">⬅ Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="changePasswordSection" class="section-box">
+    <h2>Change Password</h2>
+    <form onsubmit="saveNewPassword(event)">
+      <label for="currentPassword">Current Password:</label><br>
+      <input type="password" id="currentPassword" required><br><br>
+
+      <label for="newPassword">New Password:</label><br>
+      <input type="password" id="newPassword" required><br><br>
+
+      <label for="confirmPassword">Confirm New Password:</label><br>
+      <input type="password" id="confirmPassword" required><br><br>
+
+      <div class="section-buttons">
+        <button type="submit">🔐 Save</button>
+        <button type="button" onclick="showSection('settingsSection')">⬅ Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="container" id="mainSection">
+    <div class="module">
+      <h3>Face Recognition</h3>
+      <button onclick="startFaceRecognition()">Start Face Scan</button>
+      <div class="output" id="faceOutput"></div> <video id="camera" autoplay style="flex-grow: 1;"></video> </div>
+
+    <div class="module">
+      <h3>Voice Command</h3>
+      <button onclick="startVoiceCommand()">🎤 Start Listening</button>
+      <div class="output" id="voiceOutput"></div>
+    </div>
+
+    <div class="module">
+      <h3>Text Assistant</h3>
+      <input type="text" id="textInput" placeholder="Type your mood here">
+      <button onclick="submitTextInput()">🔍 Search</button>
+      <div class="output" id="textOutput"></div>
+    </div>
+  </div>
+
+  <footer>
+    &copy; 2025 VibeSync | Mood-Based Music Recommender | Built with ❤
+  </footer>
+
+  <script>
+    // Stores notification status in localStorage
+    let notificationsEnabled = JSON.parse(localStorage.getItem('notificationsEnabled')) || true; // Default to true
+
+    // Global variable to hold the currently playing audio element
+    let currentPlayingAudio = null;
+    // Function to pause other audio elements
+    function pauseOtherAudio(currentAudio) {
+      if (currentPlayingAudio && currentPlayingAudio !== currentAudio) {
+        currentPlayingAudio.pause();
+      }
+      currentPlayingAudio = currentAudio;
+    }
+
+    // Updates the display of the notification status
+    function updateNotificationStatusDisplay() {
+        const statusElement = document.getElementById('notificationStatus');
+        if (statusElement) {
+            statusElement.textContent = notificationsEnabled ? 'Enabled' : 'Disabled';
+        }
+    }
+
+    // Toggles notification status and saves to localStorage
+    function toggleNotifications() {
+        notificationsEnabled = !notificationsEnabled;
+        localStorage.setItem('notificationsEnabled', JSON.stringify(notificationsEnabled));
+        updateNotificationStatusDisplay();
+        alert('Notifications ' + (notificationsEnabled ? 'Enabled' : 'Disabled'));
+    }
+
+
+    // This function reads 'name' and 'email' from the URL query parameters
+    // and saves them to localStorage, then cleans the URL.
+    function checkAndSaveUserInfoFromURL() {
+      console.log("checkAndSaveUserInfoFromURL called.");
+      const urlParams = new URLSearchParams(window.location.search);
+      const name = urlParams.get('name');
+      const email = urlParams.get('email');
+
+      if (name && email) {
+        const user = { name: name, email: email };
+        localStorage.setItem("vibesyncUser", JSON.stringify(user));
+        console.log("User info found in URL and saved to localStorage:", user);
+        // Clear parameters from URL to keep it clean and prevent re-processing on refresh
+        urlParams.delete('name');
+        urlParams.delete('email');
+        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+        history.replaceState(null, '', newUrl);
+        console.log("URL parameters cleared.");
+      } else {
+        console.log("No user info (name/email) found in URL parameters.");
+      }
+    }
+
+    // This function updates the display elements with user info from localStorage.
+    // MODIFIED: Hardcoded "Admin" and "admin@gmail.com" for display
+    function updateUserInfoDisplay() {
+      console.log("updateUserInfoDisplay called.");
+      // The user object from localStorage is still retrieved (for logging or future dynamic use)
+      const user = JSON.parse(localStorage.getItem("vibesyncUser"));
+      // These lines now hardcode the display regardless of what's in 'user'
+      document.getElementById("loggedUser").textContent = "Admin";
+      document.getElementById("profileName").textContent = "Admin";
+      document.getElementById("profileEmail").textContent = "admin@gmail.com";
+
+      if (user) {
+        console.log("User info retrieved from localStorage (actual):", user);
+      } else {
+        console.log("No user info found in localStorage (actual).");
+      }
+      console.log("Displaying hardcoded 'Admin' user info.");
+    }
+
+    // Controls which main section is visible
+    function showSection(sectionId) {
+      document.getElementById("mainSection").style.display = "none";
+      ["loginSection", "profileSection", "settingsSection", "recentlyPlayedSection", "listeningHistorySection", "likedSongsSection", "editInfoSection", "changePasswordSection"]
+        .forEach(id => {
+          document.getElementById(id).style.display = (id === sectionId) ? "block" : "none";
+        });
+      // Special update for settings section to ensure notification status is current
+      if (sectionId === 'settingsSection') {
+          updateNotificationStatusDisplay();
+      }
+
+      // Always update user info display whenever a section is shown,
+      // ensuring latest data from localStorage is reflected.
+      updateUserInfoDisplay();
+    }
+
+    // Returns to the main mood detection section
+    function goBack() {
+      document.getElementById("mainSection").style.display = "flex";
+      ["loginSection", "profileSection", "settingsSection", "recentlyPlayedSection", "listeningHistorySection", "likedSongsSection", "editInfoSection", "changePasswordSection"]
+        .forEach(id => {
+          document.getElementById(id).style.display = "none";
+        });
+    }
+
+    // Displays the recently played songs (top 5), filtering out invalid entries
+    function showRecentlyPlayed() {
+      showSection("recentlyPlayedSection");
+      let songs = JSON.parse(localStorage.getItem("recentlyPlayed")) || [];
+
+      // Filter out any songs that have 'Unknown Title' or empty URL
+      songs = songs.filter(song => song.title && song.title.trim() !== 'Unknown Title' && song.url && song.url.trim() !== '');
+      document.getElementById("recentlyPlayedList").innerHTML = songs.length
+        ? songs.map(song => `
+            <li style="margin-bottom: 15px;">
+              <b>${song.title}</b> <audio controls src="${song.url}"></audio> </li>`).join("")
+        : "<li>No recently played songs yet.</li>";
+    }
+
+    // Displays the full listening history, ensuring unique and valid entries
+    function showListeningHistory() {
+      showSection("listeningHistorySection");
+      let songs = JSON.parse(localStorage.getItem("listeningHistory")) || [];
+
+      // First, filter out any songs that have 'Unknown Title' or empty URL
+      songs = songs.filter(song => song.title && song.title.trim() !== 'Unknown Title' && song.url && song.url.trim() !== '');
+      // Then, deduplicate the list based on song title
+      const uniqueSongs = [];
+      const seenTitles = new Set();
+      songs.forEach(song => {
+          if (!seenTitles.has(song.title)) {
+              uniqueSongs.push(song);
+              seenTitles.add(song.title);
+          }
+      });
+      document.getElementById("listeningHistoryList").innerHTML = uniqueSongs.length
+        ? uniqueSongs.map(song => `
+            <li style="margin-bottom: 15px;">
+              <b>${song.title}</b> <audio controls src="${song.url}"></audio> </li>`).join("")
+        : "<li>No listening history yet.</li>";
+    }
+
+    // Displays the liked songs, filtering out invalid entries
+    function showLikedSongs() {
+      showSection("likedSongsSection");
+      let liked = JSON.parse(localStorage.getItem("likedSongs")) || [];
+
+      // Filter out any songs that have 'Unknown Title' or empty URL
+      liked = liked.filter(song => song.title && song.title.trim() !== 'Unknown Title' && song.url && song.url.trim() !== '');
+      document.getElementById("likedSongsList").innerHTML = liked.length
+        ? liked.map(song => `
+            <li style="margin-bottom: 15px;">
+              <b>${song.title}</b>
+              <span class="like-icon" onclick="toggleLike(this, '${song.title.replace(/'/g, "\\'")}', '${song.url.replace(/'/g, "\\'")}')" style="cursor: pointer; font-size: 20px; margin-left: 10px; color: white;">❤</span><br>
+              <audio controls src="${song.url}"></audio>
+            </li>`).join("")
+        : "<li>No liked songs yet.</li>";
+    }
+
+    function showEditInfo() {
+      const user = JSON.parse(localStorage.getItem("vibesyncUser"));
+      if (user) {
+        document.getElementById("editName").value = user.name;
+        document.getElementById("editEmail").value = user.email;
+      } else {
+        document.getElementById("editName").value = "";
+        document.getElementById("editEmail").value = "";
+      }
+      showSection("editInfoSection");
+    }
+
+    function saveProfileInfo(event) {
+      event.preventDefault();
+      const newName = document.getElementById("editName").value.trim();
+      const newEmail = document.getElementById("editEmail").value.trim();
+
+      if (newName && newEmail) {
+        const updatedUser = { name: newName, email: newEmail };
+        localStorage.setItem("vibesyncUser", JSON.stringify(updatedUser));
+        alert("Profile updated!");
+        updateUserInfoDisplay(); // Update display after saving
+        showSection("settingsSection");
+      } else {
+        alert("Please fill in all fields.");
+      }
+    }
+
+    function showChangePassword() {
+      document.getElementById("currentPassword").value = "";
+      document.getElementById("newPassword").value = "";
+      document.getElementById("confirmPassword").value = "";
+      showSection("changePasswordSection");
+    }
+
+    function saveNewPassword(event) {
+      event.preventDefault();
+      const current = document.getElementById("currentPassword").value.trim();
+      const newPass = document.getElementById("newPassword").value.trim();
+      const confirm = document.getElementById("confirmPassword").value.trim();
+
+      const storedPass = localStorage.getItem("vibesyncPassword") || "admin123";
+      // default password for example
+
+      if (!current || !newPass || !confirm) {
+        alert("Please fill in all fields.");
+        return;
+      }
+
+      if (current !== storedPass) {
+        alert("Current password is incorrect.");
+        return;
+      }
+
+      if (newPass.length < 6) { // Example: minimum password length
+          alert("New password must be at least 6 characters long.");
+        return;
+      }
+
+      if (newPass !== confirm) {
+        alert("New passwords do not match.");
+        return;
+      }
+
+      localStorage.setItem("vibesyncPassword", newPass);
+      alert("Password updated successfully!");
+      showSection("settingsSection");
+    }
+
+    // Clears user session and redirects to the dedicated login page
+    function switchAccount() {
+      localStorage.removeItem("vibesyncUser");
+      localStorage.removeItem("vibesyncPassword"); // Clear password too when switching
+      alert("Account info cleared. Redirecting to login page...");
+      // Construct the full URL using window.location.origin for robustness
+      window.location.href = window.location.origin + '/login';
+    }
+
+    // Clears user session and redirects to the dedicated login page
+    function logout() {
+      localStorage.removeItem("vibesyncUser");
+      localStorage.removeItem("vibesyncPassword");
+      alert("You have been logged out. Redirecting to login page...");
+      // Construct the full URL using window.location.origin for robustness
+      window.location.href = window.location.origin + '/login';
+    }
+
+    // Placeholder functions for mood detection features (your Flask backend handles these)
+    function startFaceRecognition() {
+      const faceOutputElement = document.getElementById("faceOutput");
+      // Applying bold and color via class for consistency with other prompts
+      faceOutputElement.innerHTML = "<strong style='color: black;'>Analyzing your facial expressions...</strong>";
+      fetch("/face", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+          faceOutputElement.innerHTML = renderSongs(data.mood, data.songs);
+        })
+        .catch(error => {
+            console.error("Error fetching face recognition data:", error);
+            faceOutputElement.innerHTML = "<strong style='color: black;'>Error processing face scan. Please try again.</strong>";
+        });
+    }
+
+    // UPDATED: Voice Command function with text and voice prompt
+    function startVoiceCommand() {
+      const voiceOutputElement = document.getElementById("voiceOutput");
+      const promptMessage = "Hey, What's your mood today?";
+
+      // Display the prompt message in text with bold and color
+      voiceOutputElement.innerHTML = `<strong style='color: black;'>${promptMessage}</strong>`;
+      // Speak the prompt message
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(promptMessage);
+        speechSynthesis.speak(utterance);
+      } else {
+        console.warn("Web Speech API (SpeechSynthesis) not supported in this browser.");
+      }
+
+      // You would typically initiate actual voice recognition here,
+      // for example, using Web Speech API or sending a request to your Flask backend.
+      // For demonstration, we'll simulate a backend call after a brief delay.
+      setTimeout(() => {
+        fetch("/voice", { method: "POST" })
+          .then(res => res.json())
+          .then(data => {
+            // Once the backend responds with actual mood and songs, display them.
+            voiceOutputElement.innerHTML = renderSongs(data.mood, data.songs);
+          })
+          .catch(error => {
+            console.error("Error fetching voice command data:", error);
+            voiceOutputElement.innerHTML = "<strong style='color: black;'>Error processing voice command. Please try again.</strong>";
+          });
+      }, 5000);
+      // Increased delay to allow prompt to be heard/read
+    }
+
+    function submitTextInput() {
+      const input = document.getElementById("textInput").value;
+      fetch("/text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: input })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("textOutput").innerHTML = renderSongs(data.mood, data.songs);
+      });
+    }
+
+    // Renders the list of songs based on mood, sanitizing data for display and storage functions
+    function renderSongs(mood, songs) {
+      // Changed the inline style to use black color
+      let displayedMood = mood.toLowerCase() === 'happy' ? `<span class='highlight-black'>${mood}</span>` : mood;
+      let html = `<strong style='color: white;'>Detected Mood:</strong> <span style='color: white; font-weight: bold;'>${displayedMood}</span><br><br>`;
+      if (!songs.length) {
+        html += "No songs found for this mood.";
+      } else {
+        html += "<p><strong style='color: white; font-weight: bold;'>Songs Based on Your Mood 🎵</strong></p><ul style='list-style: none; padding-left: 0; margin: 0;'>";
+        songs.forEach((song) => {
+          const songTitle = (song.title && song.title.trim() !== '') ? song.title.trim() : 'Unknown Title';
+          const songUrl = (song.url && song.url.trim() !== '') ? song.url.trim() : '';
+
+          if (songTitle === 'Unknown Title' || songUrl === '') {
+            console.warn("Skipping rendering of an incomplete/invalid song:", { title: song.title, url: song.url });
+            return;
+          }
+
+          const escapedTitle = songTitle.replace(/'/g, "\\'");
+          const escapedUrl = songUrl.replace(/'/g, "\\'");
+
+          const likedSongs = JSON.parse(localStorage.getItem("likedSongs")) || [];
+          const isLiked = likedSongs.some(likedSong => likedSong.title === songTitle);
+          const likeIcon = isLiked ? '❤' : '♡';
+
+          // Modified HTML structure to ensure 'b' and 'span.like-icon' are on the same line
+          html += `
+            <li style="margin-bottom: 2px;">
+              <b>${songTitle}</b>
+              <span class="like-icon" onclick="toggleLike(this, '${escapedTitle}', '${escapedUrl}')">${likeIcon}</span>
+              <audio controls src="${songUrl}" onplay="pauseOtherAudio(this); addToRecentlyPlayed('${escapedTitle}', '${escapedUrl}'); addToListeningHistory('${escapedTitle}', '${escapedUrl}');"></audio>
+            </li>`;
+        });
+        html += "</ul>";
+      }
+      return html;
+    }
+
+    // Toggles the like status of a song
+    function toggleLike(element, title, url) {
+      if (!title || title.trim() === '' || title.trim() === 'Unknown Title' || !url || url.trim() === '') {
+        alert("Cannot like this song: Song data is incomplete or invalid.");
+        console.warn("Attempted to like an incomplete/invalid song:", { title, url });
+        return;
+      }
+
+      let liked = JSON.parse(localStorage.getItem("likedSongs")) || [];
+      const index = liked.findIndex(song => song.title === title);
+
+      if (index !== -1) {
+        liked.splice(index, 1);
+        element.textContent = "♡";
+      } else {
+        liked.push({ title: title, url: url });
+        element.textContent = "❤";
+      }
+      localStorage.setItem("likedSongs", JSON.stringify(liked));
+    }
+
+    // Adds a song to recently played list (limited to 5)
+    function addToRecentlyPlayed(songTitle, songUrl) {
+      if (!songTitle || songTitle.trim() === '' || songTitle.trim() === 'Unknown Title' || !songUrl || songUrl.trim() === '') {
+        console.warn("Skipping addToRecentlyPlayed: Song data is incomplete or invalid.", { title: songTitle, url: songUrl });
+        return;
+      }
+      let songs = JSON.parse(localStorage.getItem("recentlyPlayed")) || [];
+      songs = songs.filter(s => s.title !== songTitle);
+      songs.unshift({ title: songTitle, url: songUrl });
+      if (songs.length > 5) songs.pop();
+      localStorage.setItem("recentlyPlayed", JSON.stringify(songs));
+    }
+
+    // Adds a song to the listening history
+    function addToListeningHistory(songTitle, songUrl) {
+      if (!songTitle || songTitle.trim() === '' || songTitle.trim() === 'Unknown Title' || !songUrl || songUrl.trim() === '') {
+        console.warn("Skipping addToListeningHistory: Song data is incomplete or invalid.", { title: songTitle, url: songUrl });
+        return;
+      }
+      let history = JSON.parse(localStorage.getItem("listeningHistory")) || [];
+      const songExists = history.some(s => s.title === songTitle);
+      if (songExists) {
+          console.log(`Song "${songTitle}" already exists in listening history. Not adding duplicate.`);
+        return;
+      }
+
+      history.push({ title: songTitle, url: songUrl });
+      localStorage.setItem("listeningHistory", JSON.stringify(history));
+    }
+
+    // Initializes the user info display when the page loads
+    window.onload = () => {
+      checkAndSaveUserInfoFromURL();
+      updateUserInfoDisplay();
+      updateNotificationStatusDisplay();
+    };
+  </script>
+</body>
+</html>
