@@ -1,0 +1,107 @@
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body styling */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(120deg, #0f2027, #203a43, #2c5364);
+    color: #ffffff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+/* Title */
+h1 {
+    margin-bottom: 30px;
+    font-size: 3rem;
+    color: #00ffe7;
+    text-shadow: 0 0 10px #00ffe7;
+}
+
+/* Module container */
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    width: 100%;
+    max-width: 800px;
+}
+
+/* Individual module card */
+.module {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 4px 10px rgba(0, 255, 255, 0.2);
+    text-align: center;
+    transition: transform 0.2s ease;
+}
+
+.module:hover {
+    transform: scale(1.02);
+}
+
+/* Buttons */
+button {
+    background-color: #00ffe7;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 24px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 15px;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #00ccb3;
+    color: #000;
+}
+
+/* Input field */
+input[type="text"] {
+    width: 80%;
+    padding: 12px;
+    margin-top: 15px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+}
+
+/* Webcam feed */
+video {
+    width: 100%;
+    max-width: 400px;
+    border-radius: 15px;
+    margin-top: 15px;
+}
+
+/* Voice result output */
+#voiceOutput {
+    margin-top: 10px;
+    font-weight: bold;
+    color: #a0ffe5;
+}
+
+/* Responsive layout */
+@media (min-width: 768px) {
+    .container {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .module {
+        flex: 1 1 250px;
+        max-width: 300px;
+    }
+}
