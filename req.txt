@@ -1,0 +1,24 @@
+# Flask Web Framework
+flask
+flask-cors
+
+# Face Recognition
+opencv-python
+
+
+# Voice Recognition & Processing
+SpeechRecognition
+pyaudio
+
+# Text Mood Analysis
+nltk
+transformers
+torch
+sentencepiece
+
+# Audio support (optional for playback or streaming)
+pydub
+
+# Utilities
+numpy
+scipy
